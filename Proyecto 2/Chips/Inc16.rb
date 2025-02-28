@@ -2,9 +2,17 @@ class Inc16
   def self.increment(input)
     raise ArgumentError, "Confirmamos que sea un arreglo de 16bits" unless input.is_a?(Array) && input.size == 16
     
-    result = (input.join.to_i(2) + 1) & 0xFFFF
+    result = []
+    carry = 1 # Incremento de 1
+
+    (15).downto(0) do |i|
+      sum = input[i] ^ carry  # XOR
+      new_carry = input[i] & carry # AND
+      result.unshift(sum)
+      carry = new_carry
+    end
     
-    result.to_s(2).rjust(16, '0').chars.map(&:to_i)
+    result
   end
 end
 
