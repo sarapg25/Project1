@@ -14,14 +14,14 @@ test_cases = [
 ]
 
 # Imprimir encabezado
-puts "+---+---+-----+-------+"
-puts "| a | b | sum | carry |"
-puts "+---+---+-----+-------+"
+puts "+---+---+-------+-----+"
+puts "| a | b | carry | sum |"
+puts "+---+---+-------+-----+"
 
 # Iteraracion con los casos
 test_cases.each do |a, b|
   result = half_adder(a, b)
-  puts "| #{a} | #{b} |  #{result[:sum]}  |   #{result[:carry]}   |"
+  puts "| #{a} | #{b} |   #{result[:carry]}   |  #{result[:sum]}  |"
 end
 
-puts "+---+---+-----+-------+"
+puts "+---+---+-------+-----+"
