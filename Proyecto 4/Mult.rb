@@ -56,7 +56,7 @@ class Ventana < Gosu::Window
     end
 
     # Mensaje cuando la simulación termine
-    @fuente.draw_text("Ya no funciona :'C", 200, 550, 0, 1.0, 1.0, Gosu::Color::RED) if @terminado
+    @fuente.draw_text("Odiamos Ruby AYUDA!!!", 200, 550, 0, 1.0, 1.0, Gosu::Color::RED) if @terminado
   end
 end
 
