@@ -151,263 +151,300 @@ end
 
 #Implementacion ALU
 class ALU
-attr_reader :out, :zr, :ng
+  attr_reader :out, :zr, :ng
 
-def initialize(x, y, zx, nx, zy, ny, f, no)
-  @x = x & 0xFFFF  # Asegura que x sea de 16 bits
-  @y = y & 0xFFFF  # Asegura que y sea de 16 bits
-  @zx = zx
-  @nx = nx
-  @zy = zy
-  @ny = ny
-  @f = f
-  @no = no
-  compute
-end
-
-private
-
-def compute
-  # Paso 1: Aplicar zx y nx a x
-  x1 = @zx == 1 ? 0 : @x
-  x2 = @nx == 1 ? ~x1 & 0xFFFF : x1
-
-  # Paso 2: Aplicar zy y ny a y
-  y1 = @zy == 1 ? 0 : @y
-  y2 = @ny == 1 ? ~y1 & 0xFFFF : y1
-
-  # Paso 3: Calcular la operación (f == 1 ? x + y : x & y)
-  if @f == 1
-    out1 = (x2 + y2) & 0xFFFF  # Suma y asegura 16 bits
-  else
-    out1 = (x2 & y2) & 0xFFFF  # AND y asegura 16 bits
+  def initialize(x, y, zx, nx, zy, ny, f, no)
+    @x = x & 0xFFFF  # Asegura que x sea de 16 bits
+    @y = y & 0xFFFF  # Asegura que y sea de 16 bits
+    @zx = zx
+    @nx = nx
+    @zy = zy
+    @ny = ny
+    @f = f
+    @no = no
+    compute
   end
 
-  # Paso 4: Aplicar no al resultado
-  @out = @no == 1 ? ~out1 & 0xFFFF : out1
+  private
 
-  # Paso 5: Calcular zr (1 si out == 0, 0 en caso contrario)
-  @zr = @out == 0 ? 1 : 0
+  def compute
+    # Paso 1: Aplicar zx y nx a x
+    x1 = @zx == 1 ? 0 : @x
+    x2 = @nx == 1 ? ~x1 & 0xFFFF : x1
 
-  # Paso 6: Calcular ng (1 si out < 0, 0 en caso contrario)
-  @ng = (@out & 0x8000) != 0 ? 1 : 0  # Verifica el bit más significativo
-end
+    # Paso 2: Aplicar zy y ny a y
+    y1 = @zy == 1 ? 0 : @y
+    y2 = @ny == 1 ? ~y1 & 0xFFFF : y1
+
+    # Paso 3: Calcular la operación (f == 1 ? x + y : x & y)
+    if @f == 1
+      out1 = (x2 + y2) & 0xFFFF  # Suma y asegura 16 bits
+    else
+      out1 = (x2 & y2) & 0xFFFF  # AND y asegura 16 bits
+    end
+
+    # Paso 4: Aplicar no al resultado
+    @out = @no == 1 ? ~out1 & 0xFFFF : out1
+
+    # Paso 5: Calcular zr (1 si out == 0, 0 en caso contrario)
+    @zr = @out == 0 ? 1 : 0
+
+    # Paso 6: Calcular ng (1 si out < 0, 0 en caso contrario)
+    @ng = (@out & 0x8000) != 0 ? 1 : 0  # Verifica el bit más significativo
+  end
 end
 
 #Implementacion cpu
 class CPU
-attr_reader :outM, :writeM, :addressM, :pc
+  attr_reader :outM, :writeM, :addressM, :pc
 
-def initialize
-  @a = 0
-  @d = 0
-  @pc = 0
-  @outM = 0
-  @writeM = 0
-  @addressM = 0
-end
-
-def execute(inM, instruction, reset)
-  if reset
+  def initialize
+    @a = 0
+    @d = 0
     @pc = 0
-    return
+    @outM = 0
+    @writeM = 0
+    @addressM = 0
   end
 
-  if instruction[0] == '0'  # A-instruction
-    @a = instruction.to_i(2)
-    @addressM = @a
-    @pc += 1
-  else  # C-instruction
-    a_bit = instruction[3]
-    comp_bits = instruction[4..9]
-    dest_bits = instruction[10..12]
-    jump_bits = instruction[13..15]
+  def execute(inM, instruction, reset)
+    if reset
+      @pc = 0
+      return
+    end
 
-    # Seleccionar entrada Y (M o A)
-    y = a_bit == '1' ? inM : @a
+    if instruction[0] == '0'  # A-instruction
+      @a = instruction.to_i(2)
+      @addressM = @a
+      @pc += 1
+    else  # C-instruction
+      a_bit = instruction[3]
+      comp_bits = instruction[4..9]
+      dest_bits = instruction[10..12]
+      jump_bits = instruction[13..15]
 
-    # Decodificar bits de control de la ALU (comp_bits)
-    zx = comp_bits[0] == '1' ? 1 : 0
-    nx = comp_bits[1] == '1' ? 1 : 0
-    zy = comp_bits[2] == '1' ? 1 : 0
-    ny = comp_bits[3] == '1' ? 1 : 0
-    f  = comp_bits[4] == '1' ? 1 : 0
-    no = comp_bits[5] == '1' ? 1 : 0
+      # Seleccionar entrada Y (M o A)
+      y = a_bit == '1' ? inM : @a
 
-    # Ejecutar ALU
-    y = a_bit == '1' ? inM : @a
-    alu = ALU.new(@d, y, zx, nx, zy, ny, f, no)
-    @outM = alu.out
+      # Decodificar bits de control de la ALU (comp_bits)
+      zx = comp_bits[0] == '1' ? 1 : 0
+      nx = comp_bits[1] == '1' ? 1 : 0
+      zy = comp_bits[2] == '1' ? 1 : 0
+      ny = comp_bits[3] == '1' ? 1 : 0
+      f  = comp_bits[4] == '1' ? 1 : 0
+      no = comp_bits[5] == '1' ? 1 : 0
 
-    # Manejar dest (escritura en registros/memoria)
-    @a = alu.out if dest_bits[0] == '1'  # A
-    @addressM = @a
-    @d = alu.out if dest_bits[1] == '1'  # D
-    @writeM = dest_bits[2] == '1'        # M
+      # Ejecutar ALU
+      y = a_bit == '1' ? inM : @a
+      alu = ALU.new(@d, y, zx, nx, zy, ny, f, no)
+      @outM = alu.out
+      @zr = alu.zr
+      @ng = alu.ng
 
 
-    # Manejar jump (actualizar PC)
-    jump = should_jump?(jump_bits, alu.zr, alu.ng)
-    @pc = jump ? @a : @pc + 1
+      # Manejar dest (escritura en registros/memoria)
+      @a = alu.out if dest_bits[0] == '1'  # A
+      @addressM = @a
+      @d = alu.out if dest_bits[1] == '1'  # D
+      @writeM = dest_bits[2] == '1'        # M
+
+
+      # Manejar jump (actualizar PC)
+      jump = should_jump?(jump_bits, alu.zr, alu.ng)
+      @pc = jump ? @a : @pc + 1
+    end
+  end
+
+  private
+
+  def should_jump?(jump_bits, zr, ng)
+    jgt = jump_bits[2] == '1'
+    jeq = jump_bits[1] == '1'
+    jlt = jump_bits[0] == '1'
+
+    return true if jgt && !zr && !ng   # mayor que 0
+    return true if jeq && zr           # igual a 0
+    return true if jlt && ng           # menor que 0
+    false
   end
 end
 
-private
-
-def should_jump?(jump_bits, zr, ng)
-  jgt = jump_bits[2] == '1'
-  jeq = jump_bits[1] == '1'
-  jlt = jump_bits[0] == '1'
-
-  return true if jgt && !zr && !ng   # mayor que 0
-  return true if jeq && zr           # igual a 0
-  return true if jlt && ng           # menor que 0
-  false
-end
-end
 
 
 
 class Computer
-attr_reader :memory, :cpu
+  attr_reader :memory, :cpu
 
-def initialize(program)
-  @rom = ROM32K.new(program)
-  @memory = Memory.new
-  @cpu = CPU.new
-end
+  def initialize(program)
+    @rom = ROM32K.new(program)
+    @memory = Memory.new
+    @cpu = CPU.new
+  end
 
-def tick(reset = false)
-  instruction = @rom.read(@cpu.pc)
-  inM = @memory.read(@cpu.addressM)
+  def tick(reset = false)
+    instruction = @rom.read(@cpu.pc)
+    inM = @memory.read(@cpu.addressM)
 
-  puts "\n-- TICK --"
-  puts "PC = #{@cpu.pc}"
-  puts "Instruction = #{instruction}"
-  puts "inM = #{inM}"
-  puts "A = #{@cpu.instance_variable_get(:@a)}"
-  puts "D = #{@cpu.instance_variable_get(:@d)}"
+    puts "\n-- TICK --"
+    puts "PC = #{@cpu.pc}"
+    puts "Instruction = #{instruction}"
+    puts "inM = #{inM}"
+    puts "A = #{@cpu.instance_variable_get(:@a)}"
+    puts "D = #{@cpu.instance_variable_get(:@d)}"
 
-  @cpu.execute(inM, instruction, reset)
+    @cpu.execute(inM, instruction, reset)
 
-  puts "After execution:"
-  puts "outM = #{@cpu.outM}"
-  puts "writeM = #{@cpu.writeM}"
-  puts "addressM = #{@cpu.addressM}"
+    puts "After execution:"
+    puts "outM = #{@cpu.outM}"
+    puts "writeM = #{@cpu.writeM}"
+    puts "addressM = #{@cpu.addressM}"
 
-  @memory.write(@cpu.addressM, @cpu.outM, @cpu.writeM ? 1 : 0)
-end
+    puts "ZR = #{@cpu.instance_variable_get(:@zr)}"
+    puts "NG = #{@cpu.instance_variable_get(:@ng)}"
+
+    if instruction[0] == '1'
+      @memory.write(@cpu.addressM, @cpu.outM, @cpu.writeM ? 1 : 0)
+    end
+  end
 end
 
 #Test
 
 # Programa ADD: RAM[0] = 2 + 3
 def add_program
-[
-  "0000000000000010", # @2
-  "1110110000010000", # D=A
-  "0000000000000011", # @3
-  "1110000010010000", # D=D+A
-  "0000000000000000", # @0
-  "1110001100001000"  # M=D
-]
+  [
+    "0000000000000010", # @2
+    "1110110000010000", # D=A
+    "0000000000000011", # @3
+    "1110000010010000", # D=D+A
+    "0000000000000000", # @0
+    "1110001100001000"  # M=D
+  ]
 end
-
+  
 # Programa MAX: RAM[2] = max(RAM[0], RAM[1])
 def max_program
-[
-  "0000000000000000", # @0
-  "1111110000010000", # D=M
-  "0000000000000001", # @1
-  "1111010011010000", # D=D-M
-  "0000000000001000", # @8
-  "1110001100000001", # D;JGT
-  "0000000000000001", # @1
-  "1111110000010000", # D=M
-  "0000000000000010", # @2
-  "1110001100001000", # M=D
-  "0000000000001001", # @9
-  "1110101010000111", # 0;JMP
-  "0000000000000000", # (8) @0
-  "1111110000010000", # D=M
-  "0000000000000010", # @2
-  "1110001100001000"  # M=D (9)
-]
+  [
+  "0000000000000000", # @0       ; A = 0
+  "1111110000010000", # D=M      ; D = RAM[0]
+  "0000000000000001", # @1       ; A = 1
+  "1111010011010000", # D=D-M    ; D = D - RAM[1]
+  "0000000000001000", # @8       ; A = 8
+  "1110001100000001", # D;JGT    ; if D > 0, goto 8
+  "0000000000000001", # @1       ; A = 1
+  "1111110000010000", # D=M      ; D = RAM[1]
+  "0000000000000010", # @2       ; A = 2
+  "1110001100001000", # M=D      ; RAM[2] = D
+  "0000000000001001", # @9       ; A = 9
+  "1110101010000111", # 0;JMP    ; goto 9
+  "0000000000000000", # @0 (8)   ; A = 0
+  "1111110000010000", # D=M      ; D = RAM[0]
+  "0000000000000010", # @2       ; A = 2
+  "1110001100001000"  # M=D      ; RAM[2] = D (9)
+  ]
 end
 
 # Programa RECT: dibuja RAM[0] filas de 16 pixeles
 def rect_program
-[
-  "0000000000000000", # @0
-  "1111110000010000", # D=M
-  "0000000000010000", # @16 (i)
-  "1110101010001000", # M=0
-  "0000000000010000", # (LOOP) @16
-  "1111110000010000", # D=M
-  "0000000000000000", # @0
-  "1111010011010000", # D=D-M
-  "0000000000011000", # @24 (END)
-  "1110001100000010", # D;JEQ
-  "0100000000000000", # @16384 (SCREEN)
-  "1110000010001000", # A=D+A
-  "1110111010001000", # M=-1
-  "0000000000010000", # @16 (i)
-  "1111110111001000", # M=M+1
-  "0000000000010100", # @20 (LOOP)
-  "1110101010000111"  # 0;JMP
-]
+  [
+    "0000000000000000", # @0
+    "1111110000010000", # D=M
+    "0000000000010000", # @16 (i)
+    "1110101010001000", # M=0
+
+    # (LOOP)
+    "0000000000010000", # @16
+    "1111110000010000", # D=M
+    "0000000000000000", # @0
+    "1111010011010000", # D = D - M
+    "1110110011000000", # D = -D
+    "0000000000011010", # @26
+    "1110001100000010", # D;JEQ
+
+    "0000000000010000", # @16
+    "1111110000010000", # D=M
+    "0100000000000000", # @16384
+    "1110000010001000", # A=D+A
+    "1110111111001000", # M=-1
+
+    "0000000000010000", # @16
+    "1111110111001000", # M=M+1
+    "00000000000100100", # @4
+    "1110101010000111", # 0;JMP
+
+    # (END)
+    "0000000000011010", # @26
+    "1110101010000111"  # 0;JMP (halt loop)
+  ]
 end
+
 
 def run_program(name, program, ram_init: {}, ticks: 50)
-puts "== TEST: #{name.upcase} =="
-
-computer = Computer.new(program)
-
-# Inicializar RAM
-ram_init.each do |addr, value|
-  computer.memory.write(addr, value, 1)
+  puts "== TEST: #{name.upcase} =="
+  
+  computer = Computer.new(program)
+  
+  # Inicializar RAM
+  ram_init.each do |addr, value|
+    computer.memory.write(addr, value, 1)
+  end
+  
+  ticks.times { computer.tick }
+  
+  # Leer estado de RAM
+  state = {}
+  (0..5).each { |i| state[i] = computer.memory.read(i) }
+  (16384..16384+10).each { |i| state[i] = computer.memory.read(i) }
+  state
 end
 
-ticks.times { computer.tick }
+def print_screen(state, lines: 10)
+  puts "\n== VISUALIZACIÓN DE PANTALLA =="
 
-# Leer estado de RAM
-state = {}
-(0..5).each { |i| state[i] = computer.memory.read(i) }
-(16384..16384+10).each { |i| state[i] = computer.memory.read(i) }
-state
+  (0...lines).each do |i|
+    address = 16384 + i
+    value = state[address] || 0
+    bits = value.to_s(2).rjust(16, '0')  # convertir a binario de 16 bits
+    row = bits.chars.map { |b| b == '1' ? '█' : '·' }.join
+    puts "Fila #{i.to_s.rjust(2)}: #{row}"
+  end
 end
 
 def test_add
-state = run_program("Add", add_program)
-puts "RAM[0] = #{state[0]} (esperado: 5)"
+  state = run_program("Add", add_program)
+  puts "RAM[0] = #{state[0]} (esperado: 5)"
 end
 
 def test_max
-state = run_program("Max", max_program, ram_init: { 0 => 23456, 1 => 12345 })
-puts "RAM[2] = #{state[2]} (esperado: 23456)"
+  state = run_program("Max", max_program, ram_init: { 0 => 12345, 1 => 23456 })
+  puts "RAM[2] = #{state[2]} (esperado: 23456)"
 end
+
 
 def test_rect
-puts "== RECT =="
+  puts "== RECT =="
+  
+  # Ejecutar el programa rect con RAM[0] = 3 y suficientes ciclos
+  state = run_program("Rect", rect_program, ram_init: { 0 => 3 }, ticks: 150)
+  print_screen(state, lines: 10)
 
-# Ejecutar el programa rect con RAM[0] = 3 y suficientes ciclos
-state = run_program("Rect", rect_program, ram_init: { 0 => 3 }, ticks: 300)
+  
+  # Filtrar las direcciones de pantalla (16384 en adelante) que tengan píxeles encendidos
+  drawn = state.select { |addr, val| addr >= 16384 && val != 0 }
+  
+  puts "Pixeles dibujados: #{drawn.count} (esperado: al menos 3 líneas)"
+  
+  # Mostrar parte del estado de pantalla para verificar visualmente
+  drawn.each do |addr, val|
+    puts "Pantalla[#{addr - 16384}] = #{val}"
+  end
 
-# Filtrar las direcciones de pantalla (16384 en adelante) que tengan píxeles encendidos
-drawn = state.select { |addr, val| addr >= 16384 && val != 0 }
-
-puts "Pixeles dibujados: #{drawn.count} (esperado: al menos 3 líneas)"
-
-# Mostrar parte del estado de pantalla para verificar visualmente
-drawn.each do |addr, val|
-  puts "Pantalla[#{addr - 16384}] = #{val}"
-end
+  if drawn.empty?
+    puts "No se dibujaron líneas. Verificá la lógica del programa."
+  end
 end
 
 
 # Ejecutar los tests
-test_add
-puts
-test_max
-puts
+
 test_rect
