@@ -1,0 +1,129 @@
+#Implentacion de la RAM16K y chips necesarios
+def mux4way16(a, b, c, d, sel)
+  case sel
+  when 0 then a
+  when 1 then b
+  when 2 then c
+  when 3 then d
+  else
+    raise "Invalid selection value: #{sel}"
+  end
+end
+
+# Simulación de un demultiplexor de 4 vías
+def dmux4way(in_val, sel)
+  case sel
+  when 0 then [in_val, 0, 0, 0]
+  when 1 then [0, in_val, 0, 0]
+  when 2 then [0, 0, in_val, 0]
+  when 3 then [0, 0, 0, in_val]
+  else
+    raise "Invalid selection value: #{sel}"
+  end
+end
+
+# Simulación de una memoria RAM4K (4096 registros de 16 bits)
+class RAM4K
+  def initialize
+    @memory = Array.new(4096, 0)
+  end
+
+  def write(input, load, address)
+    @memory[address] = input & 0xFFFF if load == 1
+  end
+
+  def read(address)
+    @memory[address]
+  end
+end
+
+# Simulación de la memoria RAM16K
+class RAM16K
+  def initialize
+    @ram0 = RAM4K.new
+    @ram1 = RAM4K.new
+    @ram2 = RAM4K.new
+    @ram3 = RAM4K.new
+  end
+
+  def write(input, load, address)
+    return if address >= 0x4000  # Evitar direcciones fuera de rango
+
+    sel = (address >> 12) & 0x3   # Extraer bits 12 y 13 para seleccionar RAM4K
+    ram_address = address & 0xFFF # Dirección interna dentro de cada RAM4K
+
+    # Demultiplexar la señal de carga
+    load0, load1, load2, load3 = dmux4way(load, sel)
+
+    # Escribir en la RAM correspondiente
+    @ram0.write(input, load0, ram_address)
+    @ram1.write(input, load1, ram_address)
+    @ram2.write(input, load2, ram_address)
+    @ram3.write(input, load3, ram_address)
+  end
+
+  def read(address)
+    return 0 if address >= 0x4000  # Evitar direcciones fuera de rango
+
+    sel = (address >> 12) & 0x3   # Extraer bits 12 y 13
+    ram_address = address & 0xFFF # Dirección interna dentro de cada RAM4K
+
+    # Leer de la RAM correspondiente
+    out0 = @ram0.read(ram_address)
+    out1 = @ram1.read(ram_address)
+    out2 = @ram2.read(ram_address)
+    out3 = @ram3.read(ram_address)
+
+    # Multiplexar la salida
+    mux4way16(out0, out1, out2, out3, sel)
+  end
+end
+
+# Simulación de la pantalla (8K de memoria)
+class Screen
+  def initialize
+    @memory = Array.new(8192, 0)  # 8K de memoria para la pantalla
+  end
+
+  def read(address)
+    @memory[address]
+  end
+
+  def write(input, load, address)
+    @memory[address] = input & 0xFFFF if load
+  end
+end
+
+# Simulación del teclado (registro de 16 bits)
+class Keyboard
+  def read
+    0  # Por defecto, no hay tecla presionada
+  end
+end
+
+#Implementacion Memory
+class Memory
+  def initialize
+    @ram = RAM16K.new
+    @screen = Screen.new
+    @keyboard = Keyboard.new
+  end
+
+  def read(address)
+    case address
+    when 0..16383 then @ram.read(address)
+    when 16384..24575 then @screen.read(address - 16384)
+    when 24576 then @keyboard.read
+    else 0
+    end
+  end
+
+  def write(address, value, load)
+    return unless load
+
+    case address
+    when 0..16383 then @ram.write(value, load, address)
+    when 16384..24575 then @screen.write(value, load, address - 16384)
+    end
+  end
+end

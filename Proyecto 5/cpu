@@ -1,0 +1,111 @@
+class ALU
+  attr_reader :out, :zr, :ng
+
+  def initialize(x, y, zx, nx, zy, ny, f, no)
+    @x = x & 0xFFFF  # Asegura que x sea de 16 bits
+    @y = y & 0xFFFF  # Asegura que y sea de 16 bits
+    @zx = zx
+    @nx = nx
+    @zy = zy
+    @ny = ny
+    @f = f
+    @no = no
+    compute
+  end
+
+  private
+
+  def compute
+    # Paso 1: Aplicar zx y nx a x
+    x1 = @zx == 1 ? 0 : @x
+    x2 = @nx == 1 ? ~x1 & 0xFFFF : x1
+
+    # Paso 2: Aplicar zy y ny a y
+    y1 = @zy == 1 ? 0 : @y
+    y2 = @ny == 1 ? ~y1 & 0xFFFF : y1
+
+    # Paso 3: Calcular la operación (f == 1 ? x + y : x & y)
+    if @f == 1
+      out1 = (x2 + y2) & 0xFFFF  # Suma y asegura 16 bits
+    else
+      out1 = (x2 & y2) & 0xFFFF  # AND y asegura 16 bits
+    end
+
+    # Paso 4: Aplicar no al resultado
+    @out = @no == 1 ? ~out1 & 0xFFFF : out1
+
+    # Paso 5: Calcular zr (1 si out == 0, 0 en caso contrario)
+    @zr = @out == 0 ? 1 : 0
+
+    # Paso 6: Calcular ng (1 si out < 0, 0 en caso contrario)
+    @ng = (@out & 0x8000) != 0 ? 1 : 0  # Verifica el bit más significativo
+  end
+end
+
+class CPU
+  attr_reader :outM, :writeM, :addressM, :pc
+
+  def initialize
+    @a = 0
+    @d = 0
+    @pc = 0
+  end
+
+  def execute(inM, instruction, reset)
+    if reset
+      @pc = 0
+      return
+    end
+  
+    if instruction[0] == '0'  # A-instruction
+      @a = instruction.to_i(2)
+      @addressM = @a
+      @pc += 1
+    else  # C-instruction
+      a_bit = instruction[3]
+      comp_bits = instruction[4..9]
+      dest_bits = instruction[10..12]
+      jump_bits = instruction[13..15]
+  
+      # Seleccionar entrada Y (M o A)
+      y = a_bit == '1' ? inM : @a
+  
+      # Decodificar bits de control de la ALU (comp_bits)
+      zx = comp_bits[0] == '1' ? 1 : 0
+      nx = comp_bits[1] == '1' ? 1 : 0
+      zy = comp_bits[2] == '1' ? 1 : 0
+      ny = comp_bits[3] == '1' ? 1 : 0
+      f  = comp_bits[4] == '1' ? 1 : 0
+      no = comp_bits[5] == '1' ? 1 : 0
+  
+      # Ejecutar ALU
+      y = a_bit == '1' ? inM : @a
+      alu = ALU.new(@d, y, zx, nx, zy, ny, f, no)
+      @outM = alu.out
+  
+      # Manejar dest (escritura en registros/memoria)
+      @a = alu.out if dest_bits[0] == '1'  # A
+      @addressM = @a
+      @d = alu.out if dest_bits[1] == '1'  # D
+      @writeM = dest_bits[2] == '1'        # M
+  
+      # Manejar jump (actualizar PC)
+      jump = should_jump?(jump_bits, alu.zr, alu.ng)
+      @pc = jump ? @a : @pc + 1
+    end
+  end
+
+  private
+
+  def should_jump?(jump_bits, zr, ng)
+    jgt = jump_bits[2] == '1'
+    jeq = jump_bits[1] == '1'
+    jlt = jump_bits[0] == '1'
+
+    return true if jgt && !zr && !ng   # mayor que 0
+    return true if jeq && zr           # igual a 0
+    return true if jlt && ng           # menor que 0
+    false
+  end
+end
+

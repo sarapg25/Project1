@@ -1,0 +1,413 @@
+
+#Implementacion del ROM32K
+class ROM32K
+  SIZE = 32_768
+
+  def initialize(program = [])
+    # Cada instrucción debe ser una cadena de 16 bits (ej. "1110110000010000")
+    @memory = Array.new(SIZE, "0" * 16)
+    program.each_with_index do |instruction, i|
+      break if i >= SIZE
+      @memory[i] = instruction.rjust(16, "0")  # asegúrate de que tenga 16 bits
+    end
+  end
+
+  def read(address)
+    raise "ROM32K: Invalid address #{address}" unless (0...SIZE).include?(address)
+    @memory[address]
+  end
+end
+
+#Implementacion del memory
+#Implentacion de la RAM16K y chips necesarios
+def mux4way16(a, b, c, d, sel)
+  case sel
+  when 0 then a
+  when 1 then b
+  when 2 then c
+  when 3 then d
+  else
+    raise "Invalid selection value: #{sel}"
+  end
+end
+
+# Simulación de un demultiplexor de 4 vías
+def dmux4way(in_val, sel)
+  case sel
+  when 0 then [in_val, 0, 0, 0]
+  when 1 then [0, in_val, 0, 0]
+  when 2 then [0, 0, in_val, 0]
+  when 3 then [0, 0, 0, in_val]
+  else
+    raise "Invalid selection value: #{sel}"
+  end
+end
+
+# Simulación de una memoria RAM4K (4096 registros de 16 bits)
+class RAM4K
+  def initialize
+    @memory = Array.new(4096, 0)
+  end
+
+  def write(input, load, address)
+    @memory[address] = input & 0xFFFF if load.to_i == 1
+  end
+
+  def read(address)
+    @memory[address]
+  end
+end
+
+# Simulación de la memoria RAM16K
+class RAM16K
+  def initialize
+    @ram0 = RAM4K.new
+    @ram1 = RAM4K.new
+    @ram2 = RAM4K.new
+    @ram3 = RAM4K.new
+  end
+
+  def write(input, load, address)
+    return if address >= 0x4000  # Evitar direcciones fuera de rango
+
+    sel = (address >> 12) & 0x3   # Extraer bits 12 y 13 para seleccionar RAM4K
+    ram_address = address & 0xFFF # Dirección interna dentro de cada RAM4K
+
+    # Demultiplexar la señal de carga
+    load0, load1, load2, load3 = dmux4way(load, sel)
+
+    # Escribir en la RAM correspondiente
+    @ram0.write(input, load0, ram_address)
+    @ram1.write(input, load1, ram_address)
+    @ram2.write(input, load2, ram_address)
+    @ram3.write(input, load3, ram_address)
+  end
+
+  def read(address)
+    return 0 if address >= 0x4000  # Evitar direcciones fuera de rango
+
+    sel = (address >> 12) & 0x3   # Extraer bits 12 y 13
+    ram_address = address & 0xFFF # Dirección interna dentro de cada RAM4K
+
+    # Leer de la RAM correspondiente
+    out0 = @ram0.read(ram_address)
+    out1 = @ram1.read(ram_address)
+    out2 = @ram2.read(ram_address)
+    out3 = @ram3.read(ram_address)
+
+    # Multiplexar la salida
+    mux4way16(out0, out1, out2, out3, sel)
+  end
+end
+
+# Simulación de la pantalla (8K de memoria)
+class Screen
+  def initialize
+    @memory = Array.new(8192, 0)  # 8K de memoria para la pantalla
+  end
+
+  def read(address)
+    @memory[address]
+  end
+
+  def write(input, load, address)
+    @memory[address] = input & 0xFFFF if load
+  end
+end
+
+# Simulación del teclado (registro de 16 bits)
+class Keyboard
+  def read
+    0  # Por defecto, no hay tecla presionada
+  end
+end
+
+#Implementacion Memory
+class Memory
+  def initialize
+    @ram = RAM16K.new
+    @screen = Screen.new
+    @keyboard = Keyboard.new
+  end
+
+  def read(address)
+    case address
+    when 0..16383 then @ram.read(address)
+    when 16384..24575 then @screen.read(address - 16384)
+    when 24576 then @keyboard.read
+    else 0
+    end
+  end
+
+  def write(address, value, load)
+    return unless load
+
+    case address
+    when 0..16383 then @ram.write(value, load, address)
+    when 16384..24575 then @screen.write(value, load, address - 16384)
+    end
+  end
+end
+
+#Implementacion ALU
+class ALU
+attr_reader :out, :zr, :ng
+
+def initialize(x, y, zx, nx, zy, ny, f, no)
+  @x = x & 0xFFFF  # Asegura que x sea de 16 bits
+  @y = y & 0xFFFF  # Asegura que y sea de 16 bits
+  @zx = zx
+  @nx = nx
+  @zy = zy
+  @ny = ny
+  @f = f
+  @no = no
+  compute
+end
+
+private
+
+def compute
+  # Paso 1: Aplicar zx y nx a x
+  x1 = @zx == 1 ? 0 : @x
+  x2 = @nx == 1 ? ~x1 & 0xFFFF : x1
+
+  # Paso 2: Aplicar zy y ny a y
+  y1 = @zy == 1 ? 0 : @y
+  y2 = @ny == 1 ? ~y1 & 0xFFFF : y1
+
+  # Paso 3: Calcular la operación (f == 1 ? x + y : x & y)
+  if @f == 1
+    out1 = (x2 + y2) & 0xFFFF  # Suma y asegura 16 bits
+  else
+    out1 = (x2 & y2) & 0xFFFF  # AND y asegura 16 bits
+  end
+
+  # Paso 4: Aplicar no al resultado
+  @out = @no == 1 ? ~out1 & 0xFFFF : out1
+
+  # Paso 5: Calcular zr (1 si out == 0, 0 en caso contrario)
+  @zr = @out == 0 ? 1 : 0
+
+  # Paso 6: Calcular ng (1 si out < 0, 0 en caso contrario)
+  @ng = (@out & 0x8000) != 0 ? 1 : 0  # Verifica el bit más significativo
+end
+end
+
+#Implementacion cpu
+class CPU
+attr_reader :outM, :writeM, :addressM, :pc
+
+def initialize
+  @a = 0
+  @d = 0
+  @pc = 0
+  @outM = 0
+  @writeM = 0
+  @addressM = 0
+end
+
+def execute(inM, instruction, reset)
+  if reset
+    @pc = 0
+    return
+  end
+
+  if instruction[0] == '0'  # A-instruction
+    @a = instruction.to_i(2)
+    @addressM = @a
+    @pc += 1
+  else  # C-instruction
+    a_bit = instruction[3]
+    comp_bits = instruction[4..9]
+    dest_bits = instruction[10..12]
+    jump_bits = instruction[13..15]
+
+    # Seleccionar entrada Y (M o A)
+    y = a_bit == '1' ? inM : @a
+
+    # Decodificar bits de control de la ALU (comp_bits)
+    zx = comp_bits[0] == '1' ? 1 : 0
+    nx = comp_bits[1] == '1' ? 1 : 0
+    zy = comp_bits[2] == '1' ? 1 : 0
+    ny = comp_bits[3] == '1' ? 1 : 0
+    f  = comp_bits[4] == '1' ? 1 : 0
+    no = comp_bits[5] == '1' ? 1 : 0
+
+    # Ejecutar ALU
+    y = a_bit == '1' ? inM : @a
+    alu = ALU.new(@d, y, zx, nx, zy, ny, f, no)
+    @outM = alu.out
+
+    # Manejar dest (escritura en registros/memoria)
+    @a = alu.out if dest_bits[0] == '1'  # A
+    @addressM = @a
+    @d = alu.out if dest_bits[1] == '1'  # D
+    @writeM = dest_bits[2] == '1'        # M
+
+
+    # Manejar jump (actualizar PC)
+    jump = should_jump?(jump_bits, alu.zr, alu.ng)
+    @pc = jump ? @a : @pc + 1
+  end
+end
+
+private
+
+def should_jump?(jump_bits, zr, ng)
+  jgt = jump_bits[2] == '1'
+  jeq = jump_bits[1] == '1'
+  jlt = jump_bits[0] == '1'
+
+  return true if jgt && !zr && !ng   # mayor que 0
+  return true if jeq && zr           # igual a 0
+  return true if jlt && ng           # menor que 0
+  false
+end
+end
+
+
+
+class Computer
+attr_reader :memory, :cpu
+
+def initialize(program)
+  @rom = ROM32K.new(program)
+  @memory = Memory.new
+  @cpu = CPU.new
+end
+
+def tick(reset = false)
+  instruction = @rom.read(@cpu.pc)
+  inM = @memory.read(@cpu.addressM)
+
+  puts "\n-- TICK --"
+  puts "PC = #{@cpu.pc}"
+  puts "Instruction = #{instruction}"
+  puts "inM = #{inM}"
+  puts "A = #{@cpu.instance_variable_get(:@a)}"
+  puts "D = #{@cpu.instance_variable_get(:@d)}"
+
+  @cpu.execute(inM, instruction, reset)
+
+  puts "After execution:"
+  puts "outM = #{@cpu.outM}"
+  puts "writeM = #{@cpu.writeM}"
+  puts "addressM = #{@cpu.addressM}"
+
+  @memory.write(@cpu.addressM, @cpu.outM, @cpu.writeM ? 1 : 0)
+end
+end
+
+#Test
+
+# Programa ADD: RAM[0] = 2 + 3
+def add_program
+[
+  "0000000000000010", # @2
+  "1110110000010000", # D=A
+  "0000000000000011", # @3
+  "1110000010010000", # D=D+A
+  "0000000000000000", # @0
+  "1110001100001000"  # M=D
+]
+end
+
+# Programa MAX: RAM[2] = max(RAM[0], RAM[1])
+def max_program
+[
+  "0000000000000000", # @0
+  "1111110000010000", # D=M
+  "0000000000000001", # @1
+  "1111010011010000", # D=D-M
+  "0000000000001000", # @8
+  "1110001100000001", # D;JGT
+  "0000000000000001", # @1
+  "1111110000010000", # D=M
+  "0000000000000010", # @2
+  "1110001100001000", # M=D
+  "0000000000001001", # @9
+  "1110101010000111", # 0;JMP
+  "0000000000000000", # (8) @0
+  "1111110000010000", # D=M
+  "0000000000000010", # @2
+  "1110001100001000"  # M=D (9)
+]
+end
+
+# Programa RECT: dibuja RAM[0] filas de 16 pixeles
+def rect_program
+[
+  "0000000000000000", # @0
+  "1111110000010000", # D=M
+  "0000000000010000", # @16 (i)
+  "1110101010001000", # M=0
+  "0000000000010000", # (LOOP) @16
+  "1111110000010000", # D=M
+  "0000000000000000", # @0
+  "1111010011010000", # D=D-M
+  "0000000000011000", # @24 (END)
+  "1110001100000010", # D;JEQ
+  "0100000000000000", # @16384 (SCREEN)
+  "1110000010001000", # A=D+A
+  "1110111010001000", # M=-1
+  "0000000000010000", # @16 (i)
+  "1111110111001000", # M=M+1
+  "0000000000010100", # @20 (LOOP)
+  "1110101010000111"  # 0;JMP
+]
+end
+
+def run_program(name, program, ram_init: {}, ticks: 50)
+puts "== TEST: #{name.upcase} =="
+
+computer = Computer.new(program)
+
+# Inicializar RAM
+ram_init.each do |addr, value|
+  computer.memory.write(addr, value, 1)
+end
+
+ticks.times { computer.tick }
+
+# Leer estado de RAM
+state = {}
+(0..5).each { |i| state[i] = computer.memory.read(i) }
+(16384..16384+10).each { |i| state[i] = computer.memory.read(i) }
+state
+end
+
+def test_add
+state = run_program("Add", add_program)
+puts "RAM[0] = #{state[0]} (esperado: 5)"
+end
+
+def test_max
+state = run_program("Max", max_program, ram_init: { 0 => 23456, 1 => 12345 })
+puts "RAM[2] = #{state[2]} (esperado: 23456)"
+end
+
+def test_rect
+puts "== RECT =="
+
+# Ejecutar el programa rect con RAM[0] = 3 y suficientes ciclos
+state = run_program("Rect", rect_program, ram_init: { 0 => 3 }, ticks: 300)
+
+# Filtrar las direcciones de pantalla (16384 en adelante) que tengan píxeles encendidos
+drawn = state.select { |addr, val| addr >= 16384 && val != 0 }
+
+puts "Pixeles dibujados: #{drawn.count} (esperado: al menos 3 líneas)"
+
+# Mostrar parte del estado de pantalla para verificar visualmente
+drawn.each do |addr, val|
+  puts "Pantalla[#{addr - 16384}] = #{val}"
+end
+end
+
+
+# Ejecutar los tests
+test_add
+puts
+test_max
+puts
+test_rect
