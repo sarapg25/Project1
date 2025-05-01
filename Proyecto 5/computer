@@ -446,5 +446,8 @@ end
 
 
 # Ejecutar los tests
-
+test_add
+puts
+test_max
+puts
 test_rect
